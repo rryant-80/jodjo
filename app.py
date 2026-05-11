@@ -15,22 +15,21 @@ try:
     # Membaca sheet 'order'
     df = conn.read(spreadsheet=url_sheet, worksheet="order")
     
-    # 2. PENGOLAHAN TANGGAL (yyyy-mm-dd hh:mm:ss)
-    # Membersihkan data jika ada baris kosong
-    df = df.dropna(subset=['tanggal transaksi'])
+    # 2. PENGOLAHAN TANGGAL & PEMBERSIHAN DATA
+    # Pastikan baris yang tidak memiliki tanggal atau kode order dibuang
+    df = df.dropna(subset=['tanggal transaksi', 'kode order'])
     
     # Konversi ke datetime
     df['tanggal transaksi'] = pd.to_datetime(df['tanggal transaksi'])
     df['tahun'] = df['tanggal transaksi'].dt.year
     df['bulan_nama'] = df['tanggal transaksi'].dt.strftime('%B')
     df['bulan_angka'] = df['tanggal transaksi'].dt.month
-    df['tanggal_saja'] = df['tanggal transaksi'].dt.date
 
     # 3. SIDEBAR FILTER TAHUN
     list_tahun = sorted(df['tahun'].unique().tolist(), reverse=True)
     selected_year = st.sidebar.selectbox("📅 Pilih Tahun", list_tahun)
 
-    # Filter data tahunan
+    # Filter data berdasarkan tahun yang dipilih
     df_yearly = df[df['tahun'] == selected_year]
 
     # 4. GRAFIK AREA BULANAN
@@ -40,19 +39,18 @@ try:
     monthly_data = df_yearly.groupby(['bulan_angka', 'bulan_nama']).size().reset_index(name='Jumlah Order')
     monthly_data = monthly_data.sort_values('bulan_angka')
     
-    # Tampilkan Grafik
+    # Tampilkan Grafik Area
     st.area_chart(monthly_data.set_index('bulan_nama')['Jumlah Order'], color="#2ecc71")
 
     st.markdown("---")
 
-    # 5. FILTER BULAN UNTUK DETAIL CARD
-    # Agar interaktif, pilih bulan untuk melihat siapa top user & driver di bulan itu
+    # 5. FILTER BULAN UNTUK DETAIL INFORMASI
     list_bulan = monthly_data['bulan_nama'].tolist()
-    col_filter, col_empty = st.columns([1, 2])
+    col_filter, _ = st.columns([1, 2])
     with col_filter:
-        selected_month = st.selectbox("🔍 Detail Per Bulan:", list_bulan)
+        selected_month = st.selectbox("🔍 Pilih Bulan untuk Detail:", list_bulan)
 
-    # Data Akhir berdasarkan filter Tahun & Bulan
+    # Filter data akhir berdasarkan Tahun & Bulan
     df_final = df_yearly[df_yearly['bulan_nama'] == selected_month]
 
     # 6. CARD INFORMASI (METRICS)
@@ -69,8 +67,9 @@ try:
 
     with c2:
         if not df_final.empty:
-            top_driver = df_final['driver'].value_counts().idxmax()
-            trip_count = df_final['driver'].value_counts().max()
+            # Menggunakan nama kolom "nama driver" sesuai instruksi
+            top_driver = df_final['nama driver'].value_counts().idxmax()
+            trip_count = df_final['nama driver'].value_counts().max()
             st.metric("Driver Terlaris", top_driver, f"{trip_count} Trip")
         else:
             st.metric("Driver Terlaris", "-", "0 Trip")
@@ -84,13 +83,13 @@ try:
 
     # 7. TABEL DATA DETAIL
     st.subheader(f"📋 Daftar Transaksi {selected_month}")
-    # Menampilkan kolom yang relevan saja
+    # Menampilkan kolom sesuai urutan di Google Sheets Anda
     st.dataframe(
-        df_final[['kode order', 'username', 'driver', 'tarif', 'asal', 'tujuan', 'tanggal transaksi']], 
+        df_final[['kode order', 'username', 'nama driver', 'tarif', 'asal', 'tujuan', 'tanggal transaksi']], 
         use_container_width=True,
         hide_index=True
     )
 
 except Exception as e:
-    st.error(f"Terjadi kesalahan saat memproses data: {e}")
-    st.info("Pastikan nama kolom di Google Sheets Anda sesuai dengan kode (cek spasi atau huruf kapital).")
+    st.error(f"Terjadi kesalahan: {e}")
+    st.info("Periksa kembali apakah nama kolom di Google Sheets sudah sesuai dengan kode.")
