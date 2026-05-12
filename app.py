@@ -1,95 +1,175 @@
 import streamlit as st
-# Coba gunakan cara import ini jika cara pertama gagal terus
-from streamlit_gsheets import GSheetsConnection
+from st_gsheets_connection import GSheetsConnection
 import pandas as pd
+import plotly.express as px
+from datetime import datetime
 
-st.set_page_config(page_title="JODJO - Order Dashboard", layout="wide")
+# ================== PAGE CONFIG ==================
+st.set_page_config(
+    page_title="JODJO Dashboard Order",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="collapsed"   # Lebih baik untuk mobile
+)
 
+# ================== CUSTOM CSS - MODERN ELEGANT ==================
+st.markdown("""
+<style>
+    .main {background-color: #0F172A;}
+    .stApp {background-color: #0F172A;}
+    
+    h1, h2, h3 {
+        color: #67E8F9;
+        font-family: 'Segoe UI', sans-serif;
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #1E2937, #334155);
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        border: 1px solid #334155;
+        transition: transform 0.2s;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stPlotlyChart {
+        background-color: #1E2937;
+        border-radius: 16px;
+        padding: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    
+    .sidebar .css-1d391kg {
+        background-color: #1E2937;
+    }
+    
+    .stSelectbox label, .stMultiSelect label {
+        color: #CBD5E1;
+        font-weight: 500;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ================== HEADER ==================
 st.title("🚀 JODJO Dashboard Order")
+st.markdown("**Monitoring Real-time • Order Analytics**")
 
-# 1. KONEKSI DATA
+# ================== KONEKSI DATA ==================
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_sheet = "https://docs.google.com/spreadsheets/d/15ud5cMl-Pk_uh2tSG_MfwIyAlPMvZNxg1UehegsbHA4/edit"
 
 try:
-    # Membaca sheet 'order'
     df = conn.read(spreadsheet=url_sheet, worksheet="order")
     
-    # 2. PENGOLAHAN TANGGAL & PEMBERSIHAN DATA
-    # Pastikan baris yang tidak memiliki tanggal atau kode order dibuang
+    # Pembersihan Data
     df = df.dropna(subset=['tanggal transaksi', 'kode order'])
-    
-    # Konversi ke datetime
     df['tanggal transaksi'] = pd.to_datetime(df['tanggal transaksi'])
     df['tahun'] = df['tanggal transaksi'].dt.year
     df['bulan_nama'] = df['tanggal transaksi'].dt.strftime('%B')
     df['bulan_angka'] = df['tanggal transaksi'].dt.month
 
-    # 3. SIDEBAR FILTER TAHUN
-    list_tahun = sorted(df['tahun'].unique().tolist(), reverse=True)
-    selected_year = st.sidebar.selectbox("📅 Pilih Tahun", list_tahun)
+    # ================== FILTER RAMPING ==================
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        list_tahun = sorted(df['tahun'].unique().tolist(), reverse=True)
+        selected_year = st.selectbox("📅 Pilih Tahun", list_tahun, index=0)
+    
+    with col2:
+        # Optional: Filter bulan (bisa di-expand nanti)
+        st.markdown("")
 
-    # Filter data berdasarkan tahun yang dipilih
+    # Filter data
     df_yearly = df[df['tahun'] == selected_year]
 
-    # 4. GRAFIK AREA BULANAN
-    st.subheader(f"📈 Tren Order JODJO - Tahun {selected_year}")
+    # ================== KPI CARDS ==================
+    st.markdown(f"### 📊 Ringkasan Tahun {selected_year}")
     
-    # Menghitung jumlah order per bulan
+    c1, c2, c3, c4 = st.columns(4)
+    
+    total_order = len(df_yearly)
+    total_omzet = df_yearly['tarif'].sum() if 'tarif' in df_yearly.columns else 0
+    avg_order = df_yearly['tarif'].mean() if not df_yearly.empty else 0
+    
+    with c1:
+        st.metric("Total Order", f"{total_order:,}", "📈")
+    with c2:
+        st.metric("Total Omzet", f"Rp {total_omzet:,.0f}", "💰")
+    with c3:
+        st.metric("Rata-rata Omzet", f"Rp {avg_order:,.0f}", "📊")
+    with c4:
+        st.metric("Jumlah Hari Aktif", len(df_yearly['tanggal transaksi'].dt.date.unique()), "📅")
+
+    # ================== AREA CHART - MODERN ==================
+    st.markdown(f"### 📈 Tren Order JODJO - Tahun {selected_year}")
+    
     monthly_data = df_yearly.groupby(['bulan_angka', 'bulan_nama']).size().reset_index(name='Jumlah Order')
     monthly_data = monthly_data.sort_values('bulan_angka')
     
-    # Tampilkan Grafik Area
-    st.area_chart(monthly_data.set_index('bulan_nama')['Jumlah Order'], color="#2ecc71")
+    fig = px.area(
+        monthly_data, 
+        x='bulan_nama', 
+        y='Jumlah Order',
+        title="",
+        color_discrete_sequence=['#14B8A6'],
+        height=460
+    )
+    
+    fig.update_traces(
+        line=dict(width=4),
+        fillcolor='rgba(20, 184, 166, 0.35)',
+        hovertemplate="<b>%{x}</b><br>Order: %{y:,}<extra></extra>"
+    )
+    
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="#E2E8F0", size=13),
+        margin=dict(l=20, r=20, t=40, b=20),
+        xaxis=dict(gridcolor="#334155", tickfont=dict(size=13)),
+        yaxis=dict(gridcolor="#334155", tickfont=dict(size=13)),
+        hovermode="x unified"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
 
-    # 5. FILTER BULAN UNTUK DETAIL INFORMASI
+    # ================== DETAIL PER BULAN ==================
     list_bulan = monthly_data['bulan_nama'].tolist()
-    col_filter, _ = st.columns([1, 2])
-    with col_filter:
-        selected_month = st.selectbox("🔍 Pilih Bulan untuk Detail:", list_bulan)
+    selected_month = st.selectbox("🔍 Pilih Bulan untuk Detail", list_bulan)
 
-    # Filter data akhir berdasarkan Tahun & Bulan
     df_final = df_yearly[df_yearly['bulan_nama'] == selected_month]
 
-    # 6. CARD INFORMASI (METRICS)
-    st.subheader(f"📊 Ringkasan Aktivitas - {selected_month} {selected_year}")
+    # ================== METRICS DETAIL ==================
+    st.subheader(f"📋 Ringkasan {selected_month} {selected_year}")
     c1, c2, c3 = st.columns(3)
     
     with c1:
-        if not df_final.empty:
-            top_user = df_final['username'].value_counts().idxmax()
-            order_count = df_final['username'].value_counts().max()
-            st.metric("Pelanggan Teraktif", top_user, f"{order_count} Order")
-        else:
-            st.metric("Pelanggan Teraktif", "-", "0 Order")
-
+        top_user = df_final['username'].value_counts().idxmax() if not df_final.empty else "-"
+        st.metric("Pelanggan Teraktif", top_user, 
+                 f"{df_final['username'].value_counts().max() if not df_final.empty else 0} Order")
+    
     with c2:
-        if not df_final.empty:
-            # Menggunakan nama kolom "nama driver" sesuai instruksi
-            top_driver = df_final['nama driver'].value_counts().idxmax()
-            trip_count = df_final['nama driver'].value_counts().max()
-            st.metric("Driver Terlaris", top_driver, f"{trip_count} Trip")
-        else:
-            st.metric("Driver Terlaris", "-", "0 Trip")
-
+        top_driver = df_final['nama driver'].value_counts().idxmax() if not df_final.empty else "-"
+        st.metric("Driver Terlaris", top_driver, 
+                 f"{df_final['nama driver'].value_counts().max() if not df_final.empty else 0} Trip")
+    
     with c3:
-        # Menghitung total tarif
-        total_omzet = df_final['tarif'].sum() if not df_final.empty else 0
-        st.metric("Total Omzet", f"Rp {total_omzet:,.0f}")
+        omzet_bulan = df_final['tarif'].sum() if not df_final.empty else 0
+        st.metric("Omzet Bulan Ini", f"Rp {omzet_bulan:,.0f}")
 
-    st.markdown("---")
-
-    # 7. TABEL DATA DETAIL
-    st.subheader(f"📋 Daftar Transaksi {selected_month}")
-    # Menampilkan kolom sesuai urutan di Google Sheets Anda
+    # ================== TABEL DETAIL ==================
+    st.subheader(f"Daftar Transaksi - {selected_month}")
     st.dataframe(
-        df_final[['kode order', 'username', 'nama driver', 'tarif', 'asal', 'tujuan', 'tanggal transaksi']], 
+        df_final[['kode order', 'username', 'nama driver', 'tarif', 'asal', 'tujuan', 'tanggal transaksi']],
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        height=400
     )
 
 except Exception as e:
     st.error(f"Terjadi kesalahan: {e}")
-    st.info("Periksa kembali apakah nama kolom di Google Sheets sudah sesuai dengan kode.")
+    st.info("Pastikan nama kolom di Google Sheet sudah sesuai dan sheet bernama 'order'.")
